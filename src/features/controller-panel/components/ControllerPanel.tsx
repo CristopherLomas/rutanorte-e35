@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   QrCode,
   Search,
@@ -19,7 +19,13 @@ import {
   ChevronRight,
   ShieldCheck,
   Loader2,
+  Video,
+  VideoOff,
+  RefreshCw,
+  FlipHorizontal,
+  Volume2,
 } from "lucide-react";
+import jsQR from "jsqr";
 import { TULCAN_IBARRA_STOPS } from "@/core/mocks/tulcanIbarraData";
 import { boardingService } from "../services/boarding.service";
 
@@ -154,6 +160,39 @@ export const ControllerPanel: React.FC = () => {
   const [notification, setNotification] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
+  // Estados y Referencias de la Cámara Óptica en Vivo
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const lastScannedRef = useRef<string | null>(null);
+  const lastScanTimeRef = useRef<number>(0);
+
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(true);
+  const [cameraFacingMode, setCameraFacingMode] = useState<"environment" | "user">("environment");
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isCameraLoading, setIsCameraLoading] = useState<boolean>(false);
+  const [cameraReady, setCameraReady] = useState<boolean>(false);
+
+  // Tono sonoro de confirmación de escaneo (Web Audio API nativo)
+  const playBeepSound = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1046.5, ctx.currentTime); // C6 nota aguda
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+    } catch {}
+  }, []);
+
   const currentStop =
     TULCAN_IBARRA_STOPS.find((s) => s.stopOrder === currentStopOrder) || TULCAN_IBARRA_STOPS[1];
 
@@ -200,14 +239,61 @@ export const ControllerPanel: React.FC = () => {
     }
   };
 
-  // Validar código de boleto (intenta backend /boarding/scan-qr/{qrHash} y fallback a lista local)
-  const handleScanTicket = async (codeToScan: string) => {
-    if (!codeToScan.trim()) return;
+  // Validar código de boleto (soporta JSON de QR, backend Spring Boot o lista local)
+  const handleScanTicket = useCallback(async (rawCode: string) => {
+    if (!rawCode.trim()) return;
+
+    let codeToScan = rawCode.trim();
+    let qrPayload: any = null;
+
+    try {
+      if (codeToScan.startsWith("{") && codeToScan.endsWith("}")) {
+        qrPayload = JSON.parse(codeToScan);
+        if (qrPayload.ticketId) {
+          codeToScan = qrPayload.ticketId;
+        }
+      }
+    } catch {}
+
+    // Si el QR escaneado contiene el payload completo generado por la app
+    if (qrPayload && qrPayload.ticketId) {
+      const ticketFromQR: ControllerTicket = {
+        ticketCode: qrPayload.ticketId,
+        passengerName: qrPayload.passenger || "Pasajero Digital",
+        cedula: qrPayload.cedula || "N/A",
+        seatNumber: Array.isArray(qrPayload.seats)
+          ? qrPayload.seats[0]
+          : Number(qrPayload.seats) || 1,
+        fromStopOrder: 1,
+        toStopOrder: 8,
+        fromName: qrPayload.route ? qrPayload.route.split("->")[0]?.trim() || "Tulcán" : "Tulcán",
+        toName: qrPayload.route ? qrPayload.route.split("->")[1]?.trim() || "Ibarra" : "Ibarra",
+        status: qrPayload.status === "PENDIENTE_PAGO" ? "PENDIENTE_EFECTIVO" : "PAGADO",
+        boarded: false,
+        amountUSD: Number(qrPayload.totalUSD) || 0,
+      };
+
+      setTickets((prev) => {
+        if (!prev.some((t) => t.ticketCode === ticketFromQR.ticketCode)) {
+          return [ticketFromQR, ...prev];
+        }
+        return prev;
+      });
+
+      setActiveResult(ticketFromQR);
+      setScannedCode(ticketFromQR.ticketCode);
+      setNotification(
+        `📷 ¡Boleto QR Verificado por Cámara! Pasajero: ${ticketFromQR.passengerName} (Asiento #${ticketFromQR.seatNumber})`
+      );
+      setTimeout(() => setNotification(null), 5000);
+      return;
+    }
+
     setIsProcessing(true);
     try {
-      const apiResult = await boardingService.scanQr(codeToScan.trim());
+      const apiResult = await boardingService.scanQr(codeToScan);
       const mapped: ControllerTicket = {
-        ticketCode: apiResult.qrCodeHash || codeToScan.trim(),
+        ticketCode: apiResult.qrCodeHash || codeToScan,
         passengerName: apiResult.passengerName || "Pasajero",
         cedula: apiResult.passengerCedula || "N/A",
         seatNumber: apiResult.seatNumber || 1,
@@ -226,11 +312,12 @@ export const ControllerPanel: React.FC = () => {
       );
     } catch {
       const match = tickets.find(
-        (t) => t.ticketCode.toLowerCase() === codeToScan.trim().toLowerCase()
+        (t) => t.ticketCode.toLowerCase() === codeToScan.toLowerCase()
       );
       if (match) {
         setActiveResult(match);
         setScannedCode(match.ticketCode);
+        setNotification(`✅ Boleto encontrado en lista activa: ${match.passengerName}`);
       } else {
         setActiveResult(null);
         setNotification(`Código "${codeToScan}" no encontrado en este viaje.`);
@@ -239,7 +326,140 @@ export const ControllerPanel: React.FC = () => {
       setIsProcessing(false);
       setTimeout(() => setNotification(null), 4000);
     }
-  };
+  }, [tickets]);
+
+  // Detener hardware de cámara
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    setCameraReady(false);
+  }, []);
+
+  // Iniciar hardware de cámara
+  const startCamera = useCallback(async () => {
+    if (typeof window === "undefined" || !navigator?.mediaDevices?.getUserMedia) {
+      setCameraError("Tu navegador o entorno no soporta acceso directo a la cámara.");
+      return;
+    }
+
+    setIsCameraLoading(true);
+    setCameraError(null);
+
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: cameraFacingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute("playsinline", "true");
+        await videoRef.current.play();
+        setCameraReady(true);
+      }
+
+      setIsCameraLoading(false);
+    } catch (err: any) {
+      console.warn("[ControllerPanel] Error accediendo a la cámara:", err);
+      setIsCameraLoading(false);
+      setCameraReady(false);
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setCameraError("Permiso de cámara denegado. Habilita el permiso en tu navegador.");
+      } else {
+        setCameraError("No se pudo iniciar el sensor de cámara en este equipo.");
+      }
+    }
+  }, [cameraFacingMode]);
+
+  // Ciclo de vida de la cámara al entrar/salir de la pestaña Escáner
+  useEffect(() => {
+    if (activeTab !== "scanner" || !isCameraActive) {
+      stopCamera();
+      return;
+    }
+
+    startCamera();
+
+    return () => {
+      stopCamera();
+    };
+  }, [activeTab, isCameraActive, startCamera, stopCamera]);
+
+  // Bucle de Escaneo Óptico en Vivo con jsQR
+  useEffect(() => {
+    if (!cameraReady || activeTab !== "scanner" || !isCameraActive) {
+      return;
+    }
+
+    let isScanning = true;
+
+    const scanFrame = () => {
+      if (!isScanning) return;
+
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const qr = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
+
+          if (qr && qr.data && qr.data.trim()) {
+            const detected = qr.data.trim();
+            const now = Date.now();
+            if (detected !== lastScannedRef.current || now - lastScanTimeRef.current > 3000) {
+              lastScannedRef.current = detected;
+              lastScanTimeRef.current = now;
+              playBeepSound();
+              handleScanTicket(detected);
+            }
+          }
+        }
+      }
+
+      animFrameRef.current = requestAnimationFrame(scanFrame);
+    };
+
+    animFrameRef.current = requestAnimationFrame(scanFrame);
+
+    return () => {
+      isScanning = false;
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+    };
+  }, [cameraReady, activeTab, isCameraActive, handleScanTicket, playBeepSound]);
 
   // Marcar abordaje para boleto pagado (Spring Boot / Supabase + estado local)
   const handleConfirmBoarding = async (ticketCode: string) => {
@@ -450,35 +670,130 @@ export const ControllerPanel: React.FC = () => {
         {/* PESTAÑA 1: ESCÁNER QR */}
         {activeTab === "scanner" && (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 h-full items-stretch">
-            {/* Visor Simulado de Cámara */}
+            {/* Visor Real de Cámara Óptica */}
             <div className="md:col-span-6 p-4 rounded-2xl bg-white/95 backdrop-blur-md border border-white/80 shadow-md flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Camera className="w-4 h-4 text-blue-600" />
-                    <span>Cámara / Lector de Boletos QR</span>
+                    <span>Cámara Óptica de Abordaje (En Vivo)</span>
                   </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Lector Óptico Listo
-                  </span>
+                  <div className="flex items-center gap-1">
+                    {cameraReady && isCameraActive ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>Escaneando</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                        Sensor Pausado
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                {/* Marco de Visor */}
+                {/* Marco de Visor de Cámara Real */}
                 <div className="relative w-full h-44 sm:h-52 rounded-xl bg-slate-950 overflow-hidden flex flex-col items-center justify-center border-2 border-slate-700 shadow-inner group">
-                  {/* Línea Láser de Escaneo */}
-                  <div className="absolute inset-x-6 h-0.5 bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse" />
+                  {/* Video en vivo con webcam/cámara del dispositivo */}
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${
+                      cameraReady && isCameraActive ? "opacity-100" : "opacity-0"
+                    }`}
+                  />
+                  {/* Canvas invisible para muestreo de píxeles con jsQR */}
+                  <canvas ref={canvasRef} className="hidden" />
 
-                  {/* Cuadro de Enfoque */}
-                  <div className="w-32 h-32 border-2 border-emerald-400/80 rounded-2xl flex items-center justify-center relative">
-                    <QrCode className="w-16 h-16 text-slate-600 opacity-60" />
-                    <span className="absolute -top-2 left-2 bg-slate-900 px-1 text-[9px] font-mono text-emerald-400">
-                      ENFOQUE QR
-                    </span>
-                  </div>
+                  {/* Estado de Carga / Error / Pausa de Cámara */}
+                  {(!isCameraActive || !cameraReady) && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-slate-900/95 text-slate-300 z-10">
+                      {isCameraLoading ? (
+                        <>
+                          <Loader2 className="w-8 h-8 text-blue-400 animate-spin mb-2" />
+                          <p className="text-xs font-bold text-white">Iniciando Sensor Óptico de Cámara...</p>
+                          <span className="text-[10px] text-slate-400 mt-1">Conectando con hardware de video</span>
+                        </>
+                      ) : cameraError ? (
+                        <>
+                          <AlertTriangle className="w-8 h-8 text-amber-400 mb-2" />
+                          <p className="text-xs font-bold text-white max-w-xs">{cameraError}</p>
+                          <button
+                            type="button"
+                            onClick={() => startCamera()}
+                            className="mt-2.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Reintentar Acceso a Cámara</span>
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <VideoOff className="w-8 h-8 text-slate-500 mb-2" />
+                          <p className="text-xs font-bold text-slate-200">Cámara pausada</p>
+                          <button
+                            type="button"
+                            onClick={() => setIsCameraActive(true)}
+                            className="mt-2.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                          >
+                            <Video className="w-3.5 h-3.5" />
+                            <span>Activar Cámara</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
 
-                  <p className="text-[10px] text-slate-400 font-medium mt-3">
-                    Apunta la cámara al boleto digital o selecciona un boleto de prueba
-                  </p>
+                  {/* Capas visuales de escaneo cuando la cámara está activa */}
+                  {cameraReady && isCameraActive && (
+                    <>
+                      {/* Línea Láser Verde de Escaneo en Vivo */}
+                      <div className="absolute inset-x-6 h-0.5 bg-emerald-400 shadow-[0_0_15px_#34d399] animate-pulse z-10 pointer-events-none" />
+
+                      {/* Cuadro de Enfoque con Esquinas */}
+                      <div className="w-36 h-36 border-2 border-emerald-400/90 rounded-2xl flex items-center justify-center relative shadow-[0_0_20px_rgba(52,211,153,0.35)] pointer-events-none z-10">
+                        <span className="absolute -top-2.5 left-2 bg-slate-900/95 border border-emerald-400/50 px-1.5 py-0.5 rounded text-[8px] font-mono text-emerald-400 font-bold tracking-wider">
+                          ENFOQUE QR
+                        </span>
+                      </div>
+
+                      {/* Indicador EN VIVO en esquina izquierda */}
+                      <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-emerald-500/40 text-[9px] font-mono text-emerald-400 font-bold">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                        <span>EN VIVO (30 FPS)</span>
+                      </div>
+
+                      {/* Botones de Control de Cámara en esquina derecha */}
+                      <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCameraFacingMode((prev) =>
+                              prev === "environment" ? "user" : "environment"
+                            )
+                          }
+                          className="p-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-white text-xs backdrop-blur-md border border-white/20 transition-all cursor-pointer active:scale-95"
+                          title="Voltear Cámara (Frontal / Trasera)"
+                        >
+                          <FlipHorizontal className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsCameraActive(false)}
+                          className="p-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-rose-400 text-xs backdrop-blur-md border border-white/20 transition-all cursor-pointer active:scale-95"
+                          title="Pausar Cámara"
+                        >
+                          <VideoOff className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <p className="absolute bottom-2 inset-x-0 text-center text-[10px] text-white/90 font-medium bg-slate-950/75 py-1 backdrop-blur-xs z-10">
+                        Apunta la cámara al boleto QR para escanear automáticamente
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
 
