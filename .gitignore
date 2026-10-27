@@ -1,0 +1,47 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Next.js Build Outputs
+/.next/
+/out/
+tsconfig.tsbuildinfo
+
+# Environment Variables & Secrets
+.env*.local
+.env
+!.env.example
+
+# Production & Build Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Vercel Deployment
+.vercel
+
+# Java & Spring Boot Maven Artifacts
+backend-spring/target/
+backend-spring/.mvn/
+backend-spring/mvnw
+backend-spring/mvnw.cmd
+*.class
+*.jar
+*.war
+*.ear
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor Configurations
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

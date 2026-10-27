@@ -1,0 +1,63 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: interparroquial-backend
+
+  # Conexión a Base de Datos Supabase (PostgreSQL)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:aws-0-sa-east-1.pooler.supabase.com}:${DB_PORT:6543}/${DB_NAME:postgres}?sslmode=require}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres.rutanorte_supabase}
+    password: ${SPRING_DATASOURCE_PASSWORD:RutaNorteE35_2026_SecurePass}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 30000
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          batch_size: 20
+    open-in-view: false
+
+  # Conexión a Redis para Bloqueo Distribuido con TTL de 5 Minutos
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 5000ms
+
+# Parámetros de Seguridad JWT y Negocio
+app:
+  jwt:
+    secret: ${JWT_SECRET:c2VjdXJlLVBhbmFtZXJpY2FuYS1FMzUtVHVjYW4tSWJhcnJhLVRyYW5zcG9ydC1TZWNyZXQtS2V5LTIwMjY=}
+    expiration-ms: 86400000 # 24 horas
+  booking:
+    seat-lock-ttl-seconds: 300 # 5 minutos para confirmar pago
+    unpaid-expiration-minutes: 15 # Cancelación automática 15 minutos antes de la salida
+    base-fare-per-km: 0.04
+    minimum-fare: 0.75
+    preferential-discount-rate: 0.50 # 50% Tercera Edad / Conadis
+  cors:
+    allowed-origins:
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+
+logging:
+  level:
+    root: INFO
+    com.transporte.interparroquial: INFO
+    org.springframework.security: WARN
