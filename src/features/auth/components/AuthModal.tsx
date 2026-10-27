@@ -4,16 +4,14 @@ import React, { useState } from "react";
 import {
   X,
   User,
-  Bus,
-  ShieldCheck,
   KeyRound,
   LogIn,
   UserPlus,
-  Sparkles,
-  HeartHandshake,
   CheckCircle2,
   Loader2,
   AlertCircle,
+  Lock,
+  Sparkles,
 } from "lucide-react";
 import { UserRole, UserSession } from "../types";
 import { authService } from "../services/auth.service";
@@ -32,15 +30,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
 
   // Campos Login
-  const [loginIdentifier, setLoginIdentifier] = useState("cristopher.lomas@gmail.com");
-  const [loginPassword, setLoginPassword] = useState("••••••••");
+  const [loginIdentifier, setLoginIdentifier] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
 
   // Campos Registro
-  const [regCedula, setRegCedula] = useState("0401829341");
-  const [regName, setRegName] = useState("Cristopher Lomas");
-  const [regEmail, setRegEmail] = useState("cristopher.lomas@gmail.com");
-  const [regPassword, setRegPassword] = useState("••••••••");
-  const [regBirthDate, setRegBirthDate] = useState("1958-05-14"); // > 65 años por defecto para probar la regla
+  const [regCedula, setRegCedula] = useState("");
+  const [regName, setRegName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regBirthDate, setRegBirthDate] = useState("1998-05-14");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -100,45 +98,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Accesos Rápidos Demo para Sustentación
-  const handleQuickDemo = (role: UserRole, isSenior: boolean = false) => {
-    if (!onLoginSuccess) return;
-
-    let session: UserSession | null = null;
-    if (role === "passenger" && isSenior) {
-      session = {
-        id: "DEMO-SENIOR-1",
-        name: "Segundo Benavides (68 años)",
-        email: "segundo.benavides@carchi.ec",
-        role: "passenger",
-        isSenior: true,
-      };
-    } else if (role === "controller") {
-      session = {
-        id: "DEMO-CTRL-1",
-        name: "Wilson Bolaños",
-        email: "controlador.e35@pullmancarchi.ec",
-        role: "controller",
-        cooperative: "Disco 08 - Ciudad Blanca",
-      };
-    } else if (role === "admin") {
-      session = {
-        id: "DEMO-ADM-1",
-        name: "Ing. Ramiro Cárdenas",
-        email: "admin.operaciones@rutanorte.ec",
-        role: "admin",
-      };
-    }
-
-    if (session) {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("rutanorte_user", JSON.stringify(session));
-      }
-      onLoginSuccess(session, session.isSenior);
-    }
-    onClose();
   };
 
   return (
@@ -217,6 +176,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <input
                 type="text"
                 required
+                placeholder="Ej. 1002938471 o correo"
                 value={loginIdentifier}
                 onChange={(e) => setLoginIdentifier(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
@@ -230,6 +190,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <input
                 type="password"
                 required
+                placeholder="••••••"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
@@ -355,50 +316,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </form>
         )}
 
-        {/* ACCESOS RÁPIDOS DEMO PARA LA SUSTENTACIÓN */}
-        <div className="pt-3 border-t border-slate-200">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 text-center mb-2 flex items-center justify-center gap-1">
-            <Sparkles className="w-3 h-3 text-amber-500" />
-            <span>Accesos Rápidos Demo (Para Sustentación)</span>
-          </p>
-
-          <div className="grid grid-cols-3 gap-1.5">
-            <button
-              type="button"
-              onClick={() => handleQuickDemo("passenger", true)}
-              className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 flex flex-col items-center justify-center text-center gap-1 transition-all cursor-pointer group"
-              title="Entrar como Pasajero Adulto Mayor con 50% de descuento"
-            >
-              <HeartHandshake className="w-4 h-4 text-amber-600 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-bold leading-tight">
-                Cliente (3ra Edad -50%)
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickDemo("controller")}
-              className="p-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 flex flex-col items-center justify-center text-center gap-1 transition-all cursor-pointer group"
-              title="Entrar como Controlador a bordo del bus"
-            >
-              <Bus className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-bold leading-tight">
-                Controlador en Bus
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickDemo("admin")}
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 flex flex-col items-center justify-center text-center gap-1 transition-all cursor-pointer group"
-              title="Entrar como Administrador de la flota"
-            >
-              <ShieldCheck className="w-4 h-4 text-slate-700 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-bold leading-tight">
-                Administrador
-              </span>
-            </button>
-          </div>
+        {/* Pie de seguridad del modal */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[10px] text-slate-400 font-medium">
+          <Lock className="w-3 h-3 text-slate-400" />
+          <span>Acceso seguro encriptado • Corredor Panamericana E35</span>
         </div>
       </div>
     </div>

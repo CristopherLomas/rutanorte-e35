@@ -32,6 +32,13 @@ backend-spring/mvnw.cmd
 *.war
 *.ear
 
+# Temporary Generator Artifacts
+*.pdf
+*.html
+generate_*.py
+test_flow.*
+pdf_preview/
+
 # Operating System Files
 .DS_Store
 Thumbs.db
@@ -45,3 +52,5 @@ desktop.ini
 *.njsproj
 *.sln
 *.sw?
+
+.vercel
