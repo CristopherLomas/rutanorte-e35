@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { BusTrip, Stop } from "@/core/mocks/tulcanIbarraData";
 import { SeatMapGrid } from "@/features/seat-selection/components/SeatMapGrid";
 import { QRCodeSVG } from "qrcode.react";
@@ -17,6 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { bookingService } from "@/features/seat-selection/services/booking.service";
+import { UserSession } from "@/features/auth/types";
 
 interface SeatAndPaymentStepProps {
   originStop: Stop;
@@ -35,6 +36,8 @@ interface SeatAndPaymentStepProps {
     totalAmount: number;
   }) => void;
   onBack: () => void;
+  currentUser: UserSession | null;
+  onRequireLogin: () => void;
 }
 
 export const SeatAndPaymentStep: React.FC<SeatAndPaymentStepProps> = ({
@@ -48,11 +51,33 @@ export const SeatAndPaymentStep: React.FC<SeatAndPaymentStepProps> = ({
   onToggleSeniorCitizen,
   onConfirmPurchase,
   onBack,
+  currentUser,
+  onRequireLogin,
 }) => {
-  const [fullName, setFullName] = useState("Cristopher Lomas");
-  const [cedula, setCedula] = useState("0401829341");
-  const [phone, setPhone] = useState("0998341920");
+  const [fullName, setFullName] = useState(currentUser?.name || "");
+  const [cedula, setCedula] = useState(currentUser?.cedula || "");
+  const [phone, setPhone] = useState(currentUser?.phone || "");
   const [paymentMethod, setPaymentMethod] = useState<"deuna" | "tarjeta" | "efectivo">("deuna");
+
+  // Si cambia la sesión (el usuario inicia sesión con modal o Google), actualizar datos automáticamente
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.name && (!fullName || fullName === "Cristopher Lomas")) {
+        setFullName(currentUser.name);
+      }
+      if (currentUser.cedula && (!cedula || cedula === "0401829341")) {
+        setCedula(currentUser.cedula);
+      }
+      if (currentUser.phone && (!phone || phone === "0998341920")) {
+        setPhone(currentUser.phone);
+      }
+      if (currentUser.isSenior) {
+        onToggleSeniorCitizen(true);
+      }
+      setFormError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
 
   // Campos simulados de tarjeta
   const [cardNumber, setCardNumber] = useState("4152 •••• •••• 8294");
@@ -73,6 +98,13 @@ export const SeatAndPaymentStep: React.FC<SeatAndPaymentStepProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!currentUser) {
+      setFormError("Debes iniciar sesión para completar la compra y emitir tu boleto.");
+      onRequireLogin();
+      return;
+    }
+
     if (selectedSeats.length === 0) {
       setFormError("Por favor, selecciona al menos 1 asiento en el mapa del autobús.");
       return;
@@ -212,6 +244,37 @@ export const SeatAndPaymentStep: React.FC<SeatAndPaymentStepProps> = ({
               </div>
             </div>
 
+            {/* Estado de Autenticación / Aviso de Inicio de Sesión */}
+            {!currentUser ? (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-950 flex items-center justify-between gap-2 shadow-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="text-[11px] font-semibold leading-tight truncate">
+                    Debes iniciar sesión para emitir y pagar tu boleto
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onRequireLogin}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs transition-colors shrink-0 cursor-pointer"
+                >
+                  Iniciar Sesión
+                </button>
+              </div>
+            ) : (
+              <div className="p-2 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 flex items-center justify-between text-xs shadow-xs">
+                <div className="flex items-center gap-1.5 font-medium truncate">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                  <span className="text-[11px] truncate">
+                    Pasajero autenticado: <strong>{currentUser.name}</strong>
+                  </span>
+                </div>
+                <span className="text-[10px] text-emerald-800 bg-emerald-200/60 px-2 py-0.5 rounded-md font-bold uppercase shrink-0">
+                  {currentUser.role}
+                </span>
+              </div>
+            )}
+
             {/* Datos Personales del Pasajero */}
             <div className="space-y-2">
               <div>
@@ -221,9 +284,10 @@ export const SeatAndPaymentStep: React.FC<SeatAndPaymentStepProps> = ({
                 <input
                   type="text"
                   required
+                  placeholder="Ej. Juan Pérez / Tu Nombre"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium placeholder:text-slate-400"
                 />
               </div>
 
@@ -235,9 +299,10 @@ export const SeatAndPaymentStep: React.FC<SeatAndPaymentStepProps> = ({
                   <input
                     type="text"
                     required
+                    placeholder="Ej. 1002938471"
                     value={cedula}
                     onChange={(e) => setCedula(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium placeholder:text-slate-400"
                   />
                 </div>
                 <div>
@@ -247,9 +312,10 @@ export const SeatAndPaymentStep: React.FC<SeatAndPaymentStepProps> = ({
                   <input
                     type="tel"
                     required
+                    placeholder="Ej. 0998341920"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium placeholder:text-slate-400"
                   />
                 </div>
               </div>
@@ -440,23 +506,35 @@ export const SeatAndPaymentStep: React.FC<SeatAndPaymentStepProps> = ({
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={selectedSeats.length === 0 || isSubmitting}
-                className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg hover:shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Procesando Reserva en Supabase...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Confirmar y Emitir Boleto QR</span>
-                    <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-                  </>
-                )}
-              </button>
+              {!currentUser ? (
+                <button
+                  type="button"
+                  onClick={onRequireLogin}
+                  className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg hover:shadow-blue-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Iniciar Sesión para Pagar</span>
+                  <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={selectedSeats.length === 0 || isSubmitting}
+                  className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg hover:shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Procesando Reserva en Supabase...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Confirmar y Emitir Boleto QR</span>
+                      <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </form>
         </div>

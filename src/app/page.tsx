@@ -401,6 +401,8 @@ export default function KioskPage() {
                   setStepDirection(-1);
                   setCurrentStep(3);
                 }}
+                currentUser={currentUser}
+                onRequireLogin={() => setIsAuthModalOpen(true)}
               />
             </motion.div>
           )}
