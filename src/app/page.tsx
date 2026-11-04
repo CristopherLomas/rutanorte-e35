@@ -53,21 +53,6 @@ export default function KioskPage() {
     totalAmount: number;
   } | null>(null);
 
-  // Reproducción segura y visible de video de fondo
-  const videoRef = React.useRef<HTMLVideoElement>(null);
-  React.useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.muted = true;
-      videoRef.current.defaultMuted = true;
-      const playPromise = videoRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          // Fallback seguro sin alertas
-        });
-      }
-    }
-  }, []);
-
   // Cargar sesión persistente al recargar la página
   React.useEffect(() => {
     const saved = authService.getStoredSession();
@@ -210,21 +195,9 @@ export default function KioskPage() {
 
   return (
     <main className="h-screen max-h-screen w-screen overflow-hidden flex flex-col justify-between p-0 m-0 bg-slate-100 font-sans relative selection:bg-blue-600 selection:text-white">
-      {/* 0. Video de Paisajes Andinos en Bucle de Fondo (Visible en capa z-0) */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <video
-          ref={videoRef}
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="w-full h-full object-cover scale-105 filter blur-[1px] opacity-45 mix-blend-multiply"
-        >
-          <source src="https://assets.mixkit.co/videos/41576/41576-720.mp4" type="video/mp4" />
-          <source src="https://assets.mixkit.co/videos/31990/31990-720.mp4" type="video/mp4" />
-        </video>
-        {/* Capa de tinte suave para mantener contraste con las tarjetas */}
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-100/50 via-sky-50/30 to-slate-200/50" />
+      {/* 0. Fondo Estático Sobrio y Elegante (Alto Contraste y Limpieza Visual) */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-100 via-sky-50/50 to-slate-200 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-100/40 via-transparent to-transparent" />
       </div>
 
       {/* Luz ambiental sutil difusa en la parte superior */}
