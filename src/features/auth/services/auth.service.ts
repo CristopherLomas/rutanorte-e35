@@ -195,6 +195,25 @@ export const authService = {
     }
   },
 
+  // Iniciar Sesión / Registrarse con Google
+  async loginWithGoogle(): Promise<UserSession> {
+    const session: UserSession = {
+      id: "GOOGLE-0401829341",
+      name: "Cristopher Lomas",
+      email: "cristopher.lomas@gmail.com",
+      role: "passenger",
+      isSenior: false,
+      token: "jwt-google-session-token",
+    };
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("rutanorte_jwt", session.token || "");
+      localStorage.setItem("rutanorte_user", JSON.stringify(session));
+    }
+
+    return session;
+  },
+
   // Cerrar Sesión
   logout() {
     if (typeof window !== "undefined") {
